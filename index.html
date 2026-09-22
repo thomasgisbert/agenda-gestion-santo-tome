@@ -692,11 +692,24 @@ button:disabled{opacity:.62;cursor:not-allowed}
   function escapeHTML(str=''){ return str.replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch])); }
   function areaById(id){ return AREAS.find(a=>a.id===id); }
   const AREA_GROUPS = {
-    'obras-sanitarias':['obras-sanitarias','seccion-agua','seccion-cloaca']
+    'secretaria':[
+      'secretaria',
+      'sub-obras','obras-sanitarias','seccion-agua','seccion-cloaca','calzadas-naturales','planeamiento-vivienda','obras-publicas','hidraulica',
+      'sub-servicios','obrador-1','obrador-2','electromecanica','residuos-solidos','residuos-voluminosos','espacios-verdes','taller-mecanico','barrido'
+    ],
+    'sub-obras':[
+      'sub-obras','obras-sanitarias','seccion-agua','seccion-cloaca','calzadas-naturales','planeamiento-vivienda','obras-publicas','hidraulica'
+    ],
+    'obras-sanitarias':['obras-sanitarias','seccion-agua','seccion-cloaca'],
+    'sub-servicios':[
+      'sub-servicios','obrador-1','obrador-2','electromecanica','residuos-solidos','residuos-voluminosos','espacios-verdes','taller-mecanico','barrido'
+    ]
   };
   function areaGroupMembers(id){ return AREA_GROUPS[id] || [id]; }
-  function parentAreaFor(id){
-    return Object.keys(AREA_GROUPS).find(parent=>AREA_GROUPS[parent].includes(id) && parent!==id) || null;
+  function parentGroupsFor(id){
+    return Object.keys(AREA_GROUPS)
+      .filter(parent=>parent!==id && AREA_GROUPS[parent].includes(id))
+      .sort((a,b)=>AREA_GROUPS[a].length-AREA_GROUPS[b].length);
   }
   function taskMatchesAreaSelection(taskAreaId, selectedAreaId){
     return areaGroupMembers(selectedAreaId).includes(taskAreaId);
@@ -924,23 +937,28 @@ button:disabled{opacity:.62;cursor:not-allowed}
     refreshLinkedTaskOptions();
     els.areaFilters.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
       const id=input.value;
+      const members=areaGroupMembers(id).filter(member=>allowedIds.has(member));
+
       if(AREA_GROUPS[id]){
-        areaGroupMembers(id).forEach(member=>{
-          if(!allowedIds.has(member)) return;
+        members.forEach(member=>{
           if(input.checked) activeAreaIds.add(member); else activeAreaIds.delete(member);
         });
       }else{
         if(input.checked) activeAreaIds.add(id); else activeAreaIds.delete(id);
-        const parent=parentAreaFor(id);
-        if(parent && allowedIds.has(parent)){
-          if(!input.checked){
-            activeAreaIds.delete(parent);
-          }else{
-            const childIds=AREA_GROUPS[parent].filter(member=>member!==parent && allowedIds.has(member));
-            if(childIds.length && childIds.every(member=>activeAreaIds.has(member))) activeAreaIds.add(parent);
-          }
-        }
       }
+
+      // Keep parent checkboxes synchronized with their descendants.
+      const affectedParents=[id,...parentGroupsFor(id)]
+        .filter(parent=>AREA_GROUPS[parent] && allowedIds.has(parent))
+        .sort((a,b)=>AREA_GROUPS[a].length-AREA_GROUPS[b].length);
+
+      affectedParents.forEach(parent=>{
+        const children=AREA_GROUPS[parent].filter(member=>member!==parent && allowedIds.has(member));
+        if(!children.length) return;
+        if(children.every(member=>activeAreaIds.has(member))) activeAreaIds.add(parent);
+        else activeAreaIds.delete(parent);
+      });
+
       syncFilterUI(); renderAll();
     }));
     syncFilterUI();
@@ -959,10 +977,19 @@ button:disabled{opacity:.62;cursor:not-allowed}
     els.areaFilters.querySelectorAll('input').forEach(i=>i.checked=activeAreaIds.has(i.value));
     if(all){ els.activeFilterBar.classList.add('hidden'); els.activeFilterBar.innerHTML=''; }
     else {
-      let names = AREAS.filter(a=>activeAreaIds.has(a.id)).map(a=>a.name);
-      if(activeAreaIds.has('obras-sanitarias') && activeAreaIds.has('seccion-agua') && activeAreaIds.has('seccion-cloaca')){
-        names = names.filter(n=>!['Sección Agua','Sección Cloaca'].includes(n));
-        names = names.map(n=>n==='Departamento de Obras Sanitarias'?'Departamento de Obras Sanitarias (Agua + Cloaca)':n);
+      let names;
+      if(activeAreaIds.has('secretaria') && areaGroupMembers('secretaria').filter(id=>id!=='secretaria').every(id=>activeAreaIds.has(id))){
+        names=['Secretaría de Obras y Servicios Públicos (todas las áreas)'];
+      }else if(activeAreaIds.has('sub-obras') && areaGroupMembers('sub-obras').filter(id=>id!=='sub-obras').every(id=>activeAreaIds.has(id))){
+        names=['Subsecretaría de Obras Públicas (todas sus áreas)'];
+      }else if(activeAreaIds.has('sub-servicios') && areaGroupMembers('sub-servicios').filter(id=>id!=='sub-servicios').every(id=>activeAreaIds.has(id))){
+        names=['Subsecretaría de Servicios Públicos (todas sus áreas)'];
+      }else{
+        names = AREAS.filter(a=>activeAreaIds.has(a.id)).map(a=>a.name);
+        if(activeAreaIds.has('obras-sanitarias') && activeAreaIds.has('seccion-agua') && activeAreaIds.has('seccion-cloaca')){
+          names = names.filter(n=>!['Sección Agua','Sección Cloaca'].includes(n));
+          names = names.map(n=>n==='Departamento de Obras Sanitarias'?'Departamento de Obras Sanitarias (Agua + Cloaca)':n);
+        }
       }
       els.activeFilterBar.innerHTML = `<strong>Filtrando:</strong> ${names.map(escapeHTML).join(' · ')}`;
       els.activeFilterBar.classList.remove('hidden');
