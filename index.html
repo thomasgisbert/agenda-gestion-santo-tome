@@ -347,6 +347,25 @@ button:disabled{opacity:.62;cursor:not-allowed}
 @media (max-width:620px){
   .form-grid.three,.recurrence-grid{grid-template-columns:1fr}
 }
+
+/* v10 — selector fecha/rango, recurrencia posicional y borrado por serie */
+.date-mode-block{display:grid;gap:7px}
+.date-mode-title{font-size:11px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.date-mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#f5f5f2;border:1px solid var(--line);border-radius:11px;padding:4px}
+.date-mode-option{position:relative;display:block!important;margin:0!important}
+.date-mode-option input{position:absolute;opacity:0;pointer-events:none}
+.date-mode-option span{display:block!important;text-align:center;padding:10px 12px;border-radius:8px;color:#68747b!important;font-size:11px!important;font-weight:850!important;cursor:pointer}
+.date-mode-option:has(input:checked) span{background:#171717;color:#fff!important;box-shadow:inset 0 -3px 0 #FEC800}
+.task-date-fields{align-items:end}
+.delete-choice-card{width:min(470px,100%)}
+.delete-choice-actions{display:grid;gap:9px;margin-top:22px}
+.delete-choice-actions button{width:100%;min-height:44px;border-radius:10px;font-weight:850}
+.danger-outline{background:#fff;border:1px solid #b8544d;color:#a33f38}
+.danger-outline:hover{background:#fff1ef}
+@media (max-width:760px){
+  .date-mode-switch{grid-template-columns:1fr 1fr}
+  .date-mode-option span{padding:11px 7px;font-size:10.5px!important}
+}
 </style>
 </head>
 <body>
@@ -419,11 +438,24 @@ button:disabled{opacity:.62;cursor:not-allowed}
           </div>
 
           <form id="mobileTaskForm" class="mobile-task-form">
+            <div class="date-mode-block">
+              <span class="date-mode-title">Tipo de fecha</span>
+              <div class="date-mode-switch" role="radiogroup" aria-label="Tipo de fecha">
+                <label class="date-mode-option">
+                  <input type="radio" name="mobileTaskDateMode" value="single" checked />
+                  <span>Fecha única</span>
+                </label>
+                <label class="date-mode-option">
+                  <input type="radio" name="mobileTaskDateMode" value="range" />
+                  <span>Rango de fechas</span>
+                </label>
+              </div>
+            </div>
             <div class="mobile-date-grid">
-              <label>Desde<span>*</span>
+              <label><span id="mobileTaskDateFieldLabel">Fecha</span><span>*</span>
                 <input id="mobileTaskDate" type="date" required />
               </label>
-              <label>Hasta<span>*</span>
+              <label id="mobileTaskEndDateWrap" class="hidden">Hasta<span>*</span>
                 <input id="mobileTaskEndDate" type="date" required />
               </label>
             </div>
@@ -461,10 +493,9 @@ button:disabled{opacity:.62;cursor:not-allowed}
                 <select id="mobileTaskRecurrence">
                   <option value="none">No repetir</option>
                   <option value="daily">Todos los días</option>
-                  <option value="weekly">Todas las semanas</option>
                   <option value="every15">Cada 15 días</option>
-                  <option value="monthly">Todos los meses (mismo día)</option>
-                  <option value="first-weekday">Primer día de semana de cada mes</option>
+                  <option value="monthly">Cada mes (mismo día)</option>
+                  <option value="nth-weekday">Mismo día de semana y posición del mes</option>
                 </select>
               </label>
               <label id="mobileTaskRecurrenceUntilWrap" class="hidden">Repetir hasta
@@ -606,17 +637,30 @@ button:disabled{opacity:.62;cursor:not-allowed}
       </div>
       <form id="taskForm" class="task-form">
         <input id="taskId" type="hidden" />
-        <div class="form-grid three">
-          <label>Desde<span>*</span>
+        <div class="date-mode-block">
+          <span class="date-mode-title">Tipo de fecha</span>
+          <div class="date-mode-switch" role="radiogroup" aria-label="Tipo de fecha">
+            <label class="date-mode-option">
+              <input type="radio" name="taskDateMode" value="single" checked />
+              <span>Fecha única</span>
+            </label>
+            <label class="date-mode-option">
+              <input type="radio" name="taskDateMode" value="range" />
+              <span>Rango de fechas</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-grid two task-date-fields">
+          <label><span id="taskDateFieldLabel">Fecha</span><span>*</span>
             <input id="taskDate" type="date" required />
           </label>
-          <label>Hasta<span>*</span>
+          <label id="taskEndDateWrap" class="hidden">Hasta<span>*</span>
             <input id="taskEndDate" type="date" required />
           </label>
-          <label>Área<span>*</span>
-            <select id="taskArea" required></select>
-          </label>
         </div>
+        <label>Área<span>*</span>
+          <select id="taskArea" required></select>
+        </label>
         <p id="taskRescheduleHint" class="form-hint hidden">Si cambiás la fecha de una tarea existente, se registrará como <strong>reprogramada</strong>: la fecha anterior seguirá visible y la nueva quedará vinculada.</p>
         <label>Tarea<span>*</span>
           <input id="taskTitle" type="text" maxlength="120" required placeholder="Ej.: Reparación de luminarias en Av. 7 de Marzo" />
@@ -653,10 +697,9 @@ button:disabled{opacity:.62;cursor:not-allowed}
               <select id="taskRecurrence">
                 <option value="none">No repetir</option>
                 <option value="daily">Todos los días</option>
-                <option value="weekly">Todas las semanas</option>
                 <option value="every15">Cada 15 días</option>
-                <option value="monthly">Todos los meses (mismo día)</option>
-                <option value="first-weekday">Primer día de semana de cada mes</option>
+                <option value="monthly">Cada mes (mismo día)</option>
+                <option value="nth-weekday">Mismo día de semana y posición del mes</option>
               </select>
             </label>
             <label id="taskRecurrenceUntilWrap" class="hidden">Repetir hasta
@@ -732,6 +775,22 @@ button:disabled{opacity:.62;cursor:not-allowed}
         <p id="versionsModalSubtitle">Cambios registrados para esta tarea.</p>
       </div>
       <div id="versionsList" class="versions-list"></div>
+    </div>
+  </div>
+
+  <div id="deleteChoiceModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="deleteChoiceTitle">
+    <div class="modal-card delete-choice-card">
+      <button class="modal-close" data-close-modal="deleteChoiceModal" type="button" aria-label="Cerrar">×</button>
+      <div class="modal-title-wrap">
+        <span class="eyebrow">Eliminar</span>
+        <h2 id="deleteChoiceTitle">Eliminar tarea</h2>
+        <p id="deleteChoiceMessage">Elegí qué querés eliminar.</p>
+      </div>
+      <div class="delete-choice-actions">
+        <button id="deleteOnlyThisBtn" class="danger" type="button">Eliminar solo esta tarea</button>
+        <button id="deleteWholeSeriesBtn" class="danger-outline hidden" type="button">Eliminar todas las repeticiones</button>
+        <button class="secondary" data-close-modal="deleteChoiceModal" type="button">Cancelar</button>
+      </div>
     </div>
   </div>
 
@@ -837,12 +896,12 @@ button:disabled{opacity:.62;cursor:not-allowed}
 
   const els = Object.fromEntries([
     'loginScreen','loginForm','loginEmail','loginPassword','togglePassword','loginError','appShell','logoutBtn','sessionEmail',
-    'mobileLoadView','mobileLogoutBtn','mobileLoadTab','mobileCalendarTab','mobileLoadPanel','mobileCalendarPanel','mobileSuccess','mobileTaskForm','mobileTaskDate','mobileTaskEndDate','mobileTaskArea','mobileTaskTitle','mobileTaskInfo','mobileTaskCritical','mobileTaskCosts','mobileLinkedTask','mobileAddPurchaseOrderBtn','mobilePurchaseOrdersRows','mobileTaskRecurrence','mobileTaskRecurrenceUntilWrap','mobileTaskRecurrenceUntil','mobileTaskRecurrenceHelp','mobilePrevMonth','mobileNextMonth','mobileTodayBtn','mobileMonthTitle','mobileCalendarGrid',
+    'mobileLoadView','mobileLogoutBtn','mobileLoadTab','mobileCalendarTab','mobileLoadPanel','mobileCalendarPanel','mobileSuccess','mobileTaskForm','mobileTaskDate','mobileTaskEndDate','mobileTaskEndDateWrap','mobileTaskDateFieldLabel','mobileTaskArea','mobileTaskTitle','mobileTaskInfo','mobileTaskCritical','mobileTaskCosts','mobileLinkedTask','mobileAddPurchaseOrderBtn','mobilePurchaseOrdersRows','mobileTaskRecurrence','mobileTaskRecurrenceUntilWrap','mobileTaskRecurrenceUntil','mobileTaskRecurrenceHelp','mobilePrevMonth','mobileNextMonth','mobileTodayBtn','mobileMonthTitle','mobileCalendarGrid',
     'newTaskBtn','printBtn','prevMonth','nextMonth','todayBtn','monthTitle','monthPickerBtn','monthPicker','costsViewBtn','calendarViewBtn','areaViewBtn',
     'costsView','calendarView','areasView','calendarGrid','areaTimeline','areaFilters','selectAllBtn','clearFiltersBtn','allCount','activeFilterBar','costAreaSelector','costSummaryCards','costAreaCards','costDetailTitle','costDetailTotal','costDetailList',
-    'taskModal','taskForm','taskId','taskDate','taskEndDate','taskArea','taskTitle','taskInfo','taskCritical','taskCosts','taskLinkedTask','taskRescheduleHint','addPurchaseOrderBtn','purchaseOrdersRows','taskRecurrenceSection','taskRecurrence','taskRecurrenceUntilWrap','taskRecurrenceUntil','taskRecurrenceHelp','deleteTaskBtn',
+    'taskModal','taskForm','taskId','taskDate','taskEndDate','taskEndDateWrap','taskDateFieldLabel','taskArea','taskTitle','taskInfo','taskCritical','taskCosts','taskLinkedTask','taskRescheduleHint','addPurchaseOrderBtn','purchaseOrdersRows','taskRecurrenceSection','taskRecurrence','taskRecurrenceUntilWrap','taskRecurrenceUntil','taskRecurrenceHelp','deleteTaskBtn',
     'taskDetailModal','taskDetailArea','taskDetailTitle','taskDetailDate','taskDetailInfoWrap','taskDetailInfo','taskDetailCriticalWrap','taskDetailCritical','taskDetailCostsWrap','taskDetailCosts','taskDetailLinkedWrap','taskDetailLinked','taskDetailPurchaseOrdersWrap','taskDetailPurchaseOrders','taskDetailRescheduleWrap','taskDetailRescheduleLink','taskDetailEditBtn','taskDetailDeleteBtn','taskDetailVersionsBtn',
-    'versionsModal','versionsList','versionsModalSubtitle','printModal','printForm','printWeekDateWrap','printWeekDate','printAreaMode','dayPopover','printRoot'
+    'versionsModal','versionsList','versionsModalSubtitle','deleteChoiceModal','deleteChoiceTitle','deleteChoiceMessage','deleteOnlyThisBtn','deleteWholeSeriesBtn','printModal','printForm','printWeekDateWrap','printWeekDate','printAreaMode','dayPopover','printRoot'
   ].map(id => [id, document.getElementById(id)]));
 
   let currentMonth = startOfMonth(new Date());
