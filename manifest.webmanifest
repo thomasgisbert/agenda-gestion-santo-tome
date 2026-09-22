@@ -1,0 +1,20 @@
+{
+  "name": "Agenda de Gestión · Municipalidad de Santo Tomé",
+  "short_name": "Agenda Gestión",
+  "description": "Agenda de gestión de la Secretaría de Obras y Servicios Públicos de Santo Tomé.",
+  "lang": "es-AR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#FEC800",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
