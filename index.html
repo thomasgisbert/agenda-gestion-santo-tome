@@ -399,7 +399,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
         <div class="sidebar-footer">
           <div class="status-dot"></div>
           <div>
-            <strong>Sesión de administrador</strong>
+            <strong>Sesión activa</strong>
             <span id="sessionEmail">—</span>
           </div>
         </div>
@@ -688,6 +688,19 @@ button:disabled{opacity:.62;cursor:not-allowed}
   function sameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
   function escapeHTML(str=''){ return str.replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch])); }
   function areaById(id){ return AREAS.find(a=>a.id===id); }
+  function accessibleAreaIds(){
+    if(!currentProfile || currentProfile.role==='admin') return AREAS.map(a=>a.id);
+    if(currentProfile.role==='manager' && !currentProfile.area_id) return AREAS.map(a=>a.id);
+    if(currentProfile.role==='manager' && currentProfile.area_id==='sub-obras'){
+      return ['sub-obras','obras-sanitarias','planeamiento-vivienda','obras-publicas','hidraulica'];
+    }
+    if(currentProfile.area_id) return [currentProfile.area_id];
+    return AREAS.map(a=>a.id);
+  }
+  function accessibleAreas(){
+    const allowed=new Set(accessibleAreaIds());
+    return AREAS.filter(a=>allowed.has(a.id));
+  }
   function hexToRgba(hex,alpha=.12){
     const clean=(hex||'#333333').replace('#','');
     const n=parseInt(clean.length===3?clean.split('').map(c=>c+c).join(''):clean,16);
@@ -830,6 +843,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
     if(!currentUser){ showLogin(); return; }
     try{
       await loadProfile();
+      initAreaControls();
       await loadTasksFromSupabase();
       startRealtime();
       showApp();
@@ -867,21 +881,33 @@ button:disabled{opacity:.62;cursor:not-allowed}
   }
 
   function initAreaControls(){
-    els.areaFilters.innerHTML = AREAS.map(a=>`
+    const availableAreas=accessibleAreas();
+    const allowedIds=new Set(availableAreas.map(a=>a.id));
+    activeAreaIds=new Set([...activeAreaIds].filter(id=>allowedIds.has(id)));
+
+    els.areaFilters.innerHTML = availableAreas.map(a=>`
       <label class="area-filter level-${a.level}">
         <input type="checkbox" value="${a.id}" />
         <i class="area-color-dot" style="background:${a.color}" aria-hidden="true"></i>
         <span>${escapeHTML(a.name)}</span>
       </label>`).join('');
-    const areaOptions = `<option value="">Seleccioná un área</option>` + AREAS.map(a=>`<option value="${a.id}">${escapeHTML(a.name)}</option>`).join('');
+
+    const areaOptions = `<option value="">Seleccioná un área</option>` + availableAreas.map(a=>`<option value="${a.id}">${escapeHTML(a.name)}</option>`).join('');
     els.taskArea.innerHTML = areaOptions;
     if(els.mobileTaskArea) els.mobileTaskArea.innerHTML = areaOptions;
-    if(els.costAreaSelector) els.costAreaSelector.innerHTML = `<option value="all">Todas las áreas</option>` + AREAS.map(a=>`<option value="${a.id}">${escapeHTML(a.name)}</option>`).join('');
+
+    if(els.costAreaSelector){
+      const previous=els.costAreaSelector.value;
+      els.costAreaSelector.innerHTML = `<option value="all">Todas las áreas</option>` + availableAreas.map(a=>`<option value="${a.id}">${escapeHTML(a.name)}</option>`).join('');
+      els.costAreaSelector.value = allowedIds.has(previous) ? previous : 'all';
+    }
+
     refreshLinkedTaskOptions();
     els.areaFilters.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
       if(input.checked) activeAreaIds.add(input.value); else activeAreaIds.delete(input.value);
       syncFilterUI(); renderAll();
     }));
+    syncFilterUI();
   }
 
   function refreshLinkedTaskOptions(excludeId=''){
@@ -931,12 +957,13 @@ button:disabled{opacity:.62;cursor:not-allowed}
     const sum=list=>list.reduce((acc,t)=>acc+(Number(t.costs)||0),0);
     const total=sum(monthList), obras=sum(monthList.filter(t=>areaIds.obras.includes(t.areaId))), servicios=sum(monthList.filter(t=>areaIds.servicios.includes(t.areaId)));
     const withCost=monthList.filter(t=>Number(t.costs)>0).length;
+    const scopeTotalLabel=(currentProfile?.role==='manager' && currentProfile?.area_id==='sub-obras')?'Total Subsecretaría de Obras Públicas':'Total Secretaría';
     els.costSummaryCards.innerHTML=`
-      <article class="cost-kpi primary-kpi"><span>Total Secretaría</span><strong>${money(total)}</strong><small>${withCost} tareas con costo</small></article>
+      <article class="cost-kpi primary-kpi"><span>${scopeTotalLabel}</span><strong>${money(total)}</strong><small>${withCost} tareas con costo</small></article>
       <article class="cost-kpi"><span>Subsecretaría de Obras Públicas</span><strong>${money(obras)}</strong><small>${areaIds.obras.length} sectores</small></article>
       <article class="cost-kpi"><span>Subsecretaría de Servicios Públicos</span><strong>${money(servicios)}</strong><small>${areaIds.servicios.length} sectores</small></article>
       <article class="cost-kpi"><span>Promedio por tarea con costo</span><strong>${money(withCost?total/withCost:0)}</strong><small>${monthLabel(currentMonth)}</small></article>`;
-    const cards=AREAS.map(area=>{
+    const cards=accessibleAreas().map(area=>{
       const list=monthList.filter(t=>t.areaId===area.id), amount=sum(list), count=list.filter(t=>Number(t.costs)>0).length;
       return `<button class="cost-area-card ${selected===area.id?'active':''}" data-cost-area="${area.id}" style="${areaVars(area.id)}"><span class="cost-area-card-name"><i style="background:${area.color}"></i>${escapeHTML(area.name)}</span><strong>${money(amount)}</strong><small>${count} ${count===1?'tarea':'tareas'} con costo</small></button>`;
     }).join('');
@@ -981,7 +1008,8 @@ button:disabled{opacity:.62;cursor:not-allowed}
     const y=currentMonth.getFullYear(), m=currentMonth.getMonth();
     const days=new Date(y,m+1,0).getDate();
     const today=new Date();
-    const shownAreas = activeAreaIds.size ? AREAS.filter(a=>activeAreaIds.has(a.id)) : AREAS;
+    const baseAreas=accessibleAreas();
+    const shownAreas = activeAreaIds.size ? baseAreas.filter(a=>activeAreaIds.has(a.id)) : baseAreas;
     let html=`<div class="timeline-grid" style="grid-template-columns:230px repeat(${days},88px)">`;
     html+=`<div class="timeline-header"><div class="timeline-label">Área</div>`;
     for(let day=1;day<=days;day++){
