@@ -996,6 +996,21 @@ button:disabled{opacity:.62;cursor:not-allowed}
     const delta=(targetWeekday-d.getDay()+7)%7;
     d.setDate(1+delta); return toISO(d);
   }
+  function weekdayOrdinal(iso){ return Math.ceil(fromISO(iso).getDate()/7); }
+  function ordinalWord(n){
+    return ({1:'primer',2:'segundo',3:'tercer',4:'cuarto',5:'quinto'})[n] || `${n}°`;
+  }
+  function nthWeekdayOfMonth(baseIso,monthOffset){
+    const base=fromISO(baseIso);
+    const targetWeekday=base.getDay();
+    const ordinal=weekdayOrdinal(baseIso);
+    const first=new Date(base.getFullYear(),base.getMonth()+monthOffset,1);
+    const delta=(targetWeekday-first.getDay()+7)%7;
+    const day=1+delta+(ordinal-1)*7;
+    const candidate=new Date(first.getFullYear(),first.getMonth(),day);
+    if(candidate.getMonth()!==first.getMonth()) return null;
+    return toISO(candidate);
+  }
   function generateRecurrenceStarts(startIso,type,untilIso){
     if(!type || type==='none') return [startIso];
     if(!untilIso || untilIso<startIso) throw new Error('Elegí una fecha válida en “Repetir hasta”.');
@@ -1008,11 +1023,20 @@ button:disabled{opacity:.62;cursor:not-allowed}
       let offset=1;
       while(result.length<max){
         const next=addMonthsKeepingDay(startIso,offset++);
-        if(!next){ continue; }
+        if(!next) continue;
+        if(next>untilIso) break;
+        result.push(next);
+      }
+    }else if(type==='nth-weekday'){
+      let offset=1;
+      while(result.length<max){
+        const next=nthWeekdayOfMonth(startIso,offset++);
+        if(!next) continue;
         if(next>untilIso) break;
         result.push(next);
       }
     }else if(type==='first-weekday'){
+      // Compatibilidad con series creadas en la versión anterior.
       let offset=1;
       while(result.length<max){
         const next=firstWeekdayOfMonth(startIso,offset++);
@@ -1023,28 +1047,34 @@ button:disabled{opacity:.62;cursor:not-allowed}
     return result;
   }
   function recurrenceDescription(type,startIso){
-    const wd=weekdayName(startIso);
-    if(type==='daily') return 'Se creará una tarea todos los días hasta la fecha indicada.';
-    if(type==='weekly') return `Se repetirá todas las semanas, cada ${wd}.`;
+    if(!startIso) return '';
+    const wd=weekdayName(startIso), ordinal=ordinalWord(weekdayOrdinal(startIso));
+    if(type==='daily') return 'Se repetirá todos los días hasta la fecha indicada.';
     if(type==='every15') return 'Se repetirá cada 15 días.';
-    if(type==='monthly') return `Se repetirá todos los meses el día ${fromISO(startIso).getDate()}.`;
+    if(type==='monthly') return `Se repetirá cada mes, el día ${fromISO(startIso).getDate()}.`;
+    if(type==='nth-weekday') return `Se repetirá el ${ordinal} ${wd} de cada mes.`;
+    if(type==='weekly') return `Se repetirá todas las semanas, cada ${wd}.`;
     if(type==='first-weekday') return `Se repetirá el primer ${wd} de cada mes.`;
     return '';
   }
   function updateRecurrenceControl(select,untilWrap,untilInput,help,startIso){
     if(!select)return;
-    const wd=startIso?weekdayName(startIso):'día';
-    const weekly=select.querySelector('option[value="weekly"]');
-    const first=select.querySelector('option[value="first-weekday"]');
-    if(weekly) weekly.textContent=`Todas las semanas (cada ${wd})`;
-    if(first) first.textContent=`Primer ${wd} de cada mes`;
+    const safeStart=startIso || toISO(new Date());
+    const wd=weekdayName(safeStart);
+    const ordinal=ordinalWord(weekdayOrdinal(safeStart));
+    const monthly=select.querySelector('option[value="monthly"]');
+    const nth=select.querySelector('option[value="nth-weekday"]');
+    if(monthly) monthly.textContent=`Cada mes (día ${fromISO(safeStart).getDate()})`;
+    if(nth) nth.textContent=`${ordinal.charAt(0).toUpperCase()+ordinal.slice(1)} ${wd} de cada mes`;
     const active=select.value!=='none';
     untilWrap?.classList.toggle('hidden',!active);
-    if(active && untilInput && !untilInput.value && startIso){
-      const d=fromISO(startIso); d.setMonth(d.getMonth()+3); untilInput.value=toISO(d);
+    if(active && untilInput && !untilInput.value && safeStart){
+      const d=fromISO(safeStart); d.setMonth(d.getMonth()+3); untilInput.value=toISO(d);
     }
-    if(help) help.textContent=active?recurrenceDescription(select.value,startIso):'';
+    if(help) help.textContent=active?recurrenceDescription(select.value,safeStart):'';
   }
+
+
   function purchaseOrderRowHTML(order={}){
     return `<div class="po-row"><input type="text" maxlength="80" data-po-number placeholder="Ej.: OC 2541/2026" value="${escapeHTML(order.orderNumber||'')}" /><input type="text" maxlength="300" data-po-description placeholder="Descripción breve" value="${escapeHTML(order.description||'')}" /><button class="po-remove" data-po-remove type="button" aria-label="Quitar orden">×</button></div>`;
   }
@@ -1329,11 +1359,20 @@ button:disabled{opacity:.62;cursor:not-allowed}
     return created||[];
   }
 
-  async function deleteTaskRemote(id){
+  async function deleteTaskRemote(id,scope='single'){
+    const task=tasks.find(t=>t.id===id);
+    if(!task) return;
+    if(scope==='series' && task.recurrenceSeriesId){
+      const {error}=await supabaseClient.from('tasks').delete().eq('recurrence_series_id',task.recurrenceSeriesId);
+      if(error) throw error;
+      tasks=tasks.filter(t=>t.recurrenceSeriesId!==task.recurrenceSeriesId);
+      return;
+    }
     const {error}=await supabaseClient.from('tasks').delete().eq('id',id);
     if(error) throw error;
     tasks=tasks.filter(t=>t.id!==id);
   }
+
 
   function initAreaControls(){
     const availableAreas=accessibleAreas();
@@ -1631,7 +1670,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
 
     const historical=t.status==='rescheduled';
     els.taskDetailEditBtn.classList.toggle('hidden',historical);
-    els.taskDetailDeleteBtn.classList.toggle('hidden',historical);
+    els.taskDetailDeleteBtn.classList.toggle('hidden',!isManager());
     els.dayPopover.classList.add('hidden');
     openModal(els.taskDetailModal);
   }
@@ -1642,6 +1681,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
     els.taskId.value='';
     els.taskDate.value=date;
     els.taskEndDate.value=date;
+    setDateMode('single',{groupName:'taskDateMode',startInput:els.taskDate,endInput:els.taskEndDate,endWrap:els.taskEndDateWrap,startLabel:els.taskDateFieldLabel});
     els.deleteTaskBtn.classList.add('hidden');
     els.taskRescheduleHint.classList.add('hidden');
     els.taskRecurrenceSection.classList.remove('hidden');
@@ -1659,6 +1699,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
     els.taskId.value=t.id;
     els.taskDate.value=t.date;
     els.taskEndDate.value=taskEnd(t);
+    setDateMode(taskEnd(t)===t.date?'single':'range',{groupName:'taskDateMode',startInput:els.taskDate,endInput:els.taskEndDate,endWrap:els.taskEndDateWrap,startLabel:els.taskDateFieldLabel});
     els.taskArea.value=t.areaId;
     els.taskTitle.value=t.title;
     els.taskInfo.value=t.info||'';
@@ -1742,6 +1783,44 @@ button:disabled{opacity:.62;cursor:not-allowed}
   }
 
   
+  let pendingDeleteTaskId=null;
+  function requestTaskDeletion(id){
+    const task=tasks.find(t=>t.id===id); if(!task)return;
+    pendingDeleteTaskId=id;
+    const isSeries=Boolean(task.recurrenceSeriesId);
+    els.deleteChoiceTitle.textContent=isSeries?'Eliminar tarea repetida':'Eliminar tarea';
+    els.deleteChoiceMessage.textContent=isSeries
+      ? 'Esta tarea pertenece a una repetición. Podés eliminar solamente esta fecha o todo el conjunto de tareas repetidas.'
+      : `Se eliminará “${task.title}”. Esta acción no se puede deshacer.`;
+    els.deleteOnlyThisBtn.textContent=isSeries?'Eliminar solo esta tarea':'Eliminar tarea';
+    els.deleteWholeSeriesBtn.classList.toggle('hidden',!isSeries);
+    openModal(els.deleteChoiceModal);
+  }
+  async function confirmTaskDeletion(scope){
+    const id=pendingDeleteTaskId; if(!id)return;
+    const task=tasks.find(t=>t.id===id);
+    try{
+      els.deleteOnlyThisBtn.disabled=true;
+      els.deleteWholeSeriesBtn.disabled=true;
+      await deleteTaskRemote(id,scope);
+      await loadTasksFromSupabase();
+      pendingDeleteTaskId=null;
+      currentDetailTaskId=null;
+      closeModal(els.deleteChoiceModal);
+      closeModal(els.taskDetailModal);
+      closeModal(els.taskModal);
+      renderAll();
+    }catch(error){
+      console.error(error);
+      alert('No se pudo eliminar la tarea.');
+    }finally{
+      els.deleteOnlyThisBtn.disabled=false;
+      els.deleteWholeSeriesBtn.disabled=false;
+    }
+  }
+  els.deleteOnlyThisBtn?.addEventListener('click',()=>confirmTaskDeletion('single'));
+  els.deleteWholeSeriesBtn?.addEventListener('click',()=>confirmTaskDeletion('series'));
+
   els.loginForm.addEventListener('submit',async e=>{
     e.preventDefault();
     els.loginError.textContent='';
@@ -1773,17 +1852,8 @@ button:disabled{opacity:.62;cursor:not-allowed}
   els.taskDetailVersionsBtn.addEventListener('click',openTaskVersions);
   els.taskDetailLinked.addEventListener('click',()=>{ const id=els.taskDetailLinked.dataset.taskId; if(id){ closeModal(els.taskDetailModal); openTaskDetails(id); } });
   els.taskDetailRescheduleLink?.addEventListener('click',()=>{ const id=els.taskDetailRescheduleLink.dataset.taskId; if(id){ closeModal(els.taskDetailModal); openTaskDetails(id); } });
-  els.taskDetailDeleteBtn.addEventListener('click',async ()=>{
-    if(!currentDetailTaskId)return;
-    const t=tasks.find(x=>x.id===currentDetailTaskId);
-    if(confirm(`¿Eliminar la tarea "${t?.title||''}"? Esta acción no se puede deshacer.`)){
-      try{
-        await deleteTaskRemote(currentDetailTaskId);
-        currentDetailTaskId=null;
-        closeModal(els.taskDetailModal);
-        renderAll();
-      }catch(error){ console.error(error); alert('No se pudo eliminar la tarea.'); }
-    }
+  els.taskDetailDeleteBtn.addEventListener('click',()=>{
+    if(currentDetailTaskId) requestTaskDeletion(currentDetailTaskId);
   });
   els.printBtn.addEventListener('click',()=>{ els.printWeekDate.value=toISO(new Date()); openModal(els.printModal); });
   els.prevMonth.addEventListener('click',()=>{ currentMonth=addMonths(currentMonth,-1); renderAll(); });
@@ -1796,27 +1866,59 @@ button:disabled{opacity:.62;cursor:not-allowed}
   els.selectAllBtn.addEventListener('click',()=>{ activeAreaIds.clear(); syncFilterUI(); renderAll(); });
   els.clearFiltersBtn.addEventListener('click',()=>{ activeAreaIds.clear(); syncFilterUI(); renderAll(); });
 
-  document.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',()=>closeModal(document.getElementById(b.dataset.closeModal))));
+  document.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',()=>{
+    const modal=document.getElementById(b.dataset.closeModal);
+    closeModal(modal);
+    if(modal===els.deleteChoiceModal) pendingDeleteTaskId=null;
+  }));
   document.querySelectorAll('.modal-backdrop').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m) closeModal(m); }));
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(closeModal); els.dayPopover.classList.add('hidden'); } });
 
-  function ensureEndNotBeforeStart(startInput,endInput){
+  function selectedDateMode(groupName){
+    return document.querySelector(`input[name="${groupName}"]:checked`)?.value || 'single';
+  }
+  function setDateMode(mode,{groupName,startInput,endInput,endWrap,startLabel}){
+    const radio=document.querySelector(`input[name="${groupName}"][value="${mode}"]`);
+    if(radio) radio.checked=true;
+    const isRange=mode==='range';
+    endWrap?.classList.toggle('hidden',!isRange);
+    if(startLabel) startLabel.textContent=isRange?'Desde':'Fecha';
+    if(startInput?.value){
+      endInput.min=startInput.value;
+      if(!isRange){
+        endInput.value=startInput.value;
+      }else if(!endInput.value || endInput.value<startInput.value){
+        endInput.value=startInput.value;
+      }
+    }
+  }
+  function ensureEndNotBeforeStart(startInput,endInput,mode='range'){
     if(!startInput||!endInput||!startInput.value)return;
-    if(!endInput.value || endInput.value<startInput.value) endInput.value=startInput.value;
     endInput.min=startInput.value;
+    if(mode==='single'){
+      endInput.value=startInput.value;
+      return;
+    }
+    if(!endInput.value || endInput.value<startInput.value) endInput.value=startInput.value;
   }
   els.addPurchaseOrderBtn?.addEventListener('click',()=>addPurchaseOrderRow(els.purchaseOrdersRows,{}));
   els.mobileAddPurchaseOrderBtn?.addEventListener('click',()=>addPurchaseOrderRow(els.mobilePurchaseOrdersRows,{}));
+  document.querySelectorAll('input[name="taskDateMode"]').forEach(r=>r.addEventListener('change',()=>setDateMode(r.value,{
+    groupName:'taskDateMode',startInput:els.taskDate,endInput:els.taskEndDate,endWrap:els.taskEndDateWrap,startLabel:els.taskDateFieldLabel
+  })));
+  document.querySelectorAll('input[name="mobileTaskDateMode"]').forEach(r=>r.addEventListener('change',()=>setDateMode(r.value,{
+    groupName:'mobileTaskDateMode',startInput:els.mobileTaskDate,endInput:els.mobileTaskEndDate,endWrap:els.mobileTaskEndDateWrap,startLabel:els.mobileTaskDateFieldLabel
+  })));
   els.taskDate?.addEventListener('change',()=>{
-    ensureEndNotBeforeStart(els.taskDate,els.taskEndDate);
+    ensureEndNotBeforeStart(els.taskDate,els.taskEndDate,selectedDateMode('taskDateMode'));
     updateRecurrenceControl(els.taskRecurrence,els.taskRecurrenceUntilWrap,els.taskRecurrenceUntil,els.taskRecurrenceHelp,els.taskDate.value);
   });
-  els.taskEndDate?.addEventListener('change',()=>ensureEndNotBeforeStart(els.taskDate,els.taskEndDate));
+  els.taskEndDate?.addEventListener('change',()=>ensureEndNotBeforeStart(els.taskDate,els.taskEndDate,'range'));
   els.mobileTaskDate?.addEventListener('change',()=>{
-    ensureEndNotBeforeStart(els.mobileTaskDate,els.mobileTaskEndDate);
+    ensureEndNotBeforeStart(els.mobileTaskDate,els.mobileTaskEndDate,selectedDateMode('mobileTaskDateMode'));
     updateRecurrenceControl(els.mobileTaskRecurrence,els.mobileTaskRecurrenceUntilWrap,els.mobileTaskRecurrenceUntil,els.mobileTaskRecurrenceHelp,els.mobileTaskDate.value);
   });
-  els.mobileTaskEndDate?.addEventListener('change',()=>ensureEndNotBeforeStart(els.mobileTaskDate,els.mobileTaskEndDate));
+  els.mobileTaskEndDate?.addEventListener('change',()=>ensureEndNotBeforeStart(els.mobileTaskDate,els.mobileTaskEndDate,'range'));
   els.taskRecurrence?.addEventListener('change',()=>updateRecurrenceControl(els.taskRecurrence,els.taskRecurrenceUntilWrap,els.taskRecurrenceUntil,els.taskRecurrenceHelp,els.taskDate.value));
   els.mobileTaskRecurrence?.addEventListener('change',()=>updateRecurrenceControl(els.mobileTaskRecurrence,els.mobileTaskRecurrenceUntilWrap,els.mobileTaskRecurrenceUntil,els.mobileTaskRecurrenceHelp,els.mobileTaskDate.value));
 
@@ -1844,7 +1946,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
     const data={
       id:els.taskId.value||uuid(),
       date:els.taskDate.value,
-      endDate:els.taskEndDate.value||els.taskDate.value,
+      endDate:selectedDateMode('taskDateMode')==='range' ? (els.taskEndDate.value||els.taskDate.value) : els.taskDate.value,
       areaId:els.taskArea.value,
       title:els.taskTitle.value.trim(),
       info:els.taskInfo.value.trim(),
@@ -1879,16 +1981,8 @@ button:disabled{opacity:.62;cursor:not-allowed}
     }catch(error){ console.error(error); alert(error?.message || 'No se pudo guardar la tarea en Supabase.'); }
     finally{ setSaveButtonLoading(els.taskForm,false); }
   });
-  els.deleteTaskBtn.addEventListener('click',async ()=>{
-    const id=els.taskId.value; if(!id)return;
-    if(confirm('¿Eliminar esta tarea? Esta acción no se puede deshacer.')){
-      try{
-        await deleteTaskRemote(id);
-        if(currentDetailTaskId===id) currentDetailTaskId=null;
-        closeModal(els.taskModal);
-        renderAll();
-      }catch(error){ console.error(error); alert('No se pudo eliminar la tarea.'); }
-    }
+  els.deleteTaskBtn.addEventListener('click',()=>{
+    const id=els.taskId.value; if(id) requestTaskDeletion(id);
   });
 
   if(els.mobileTaskForm) els.mobileTaskForm.addEventListener('submit',async e=>{
@@ -1899,7 +1993,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
     const data={
       id:uuid(),
       date:els.mobileTaskDate.value,
-      endDate:els.mobileTaskEndDate.value||els.mobileTaskDate.value,
+      endDate:selectedDateMode('mobileTaskDateMode')==='range' ? (els.mobileTaskEndDate.value||els.mobileTaskDate.value) : els.mobileTaskDate.value,
       areaId:els.mobileTaskArea.value,
       title:els.mobileTaskTitle.value.trim(),
       info:els.mobileTaskInfo.value.trim(),
@@ -1925,6 +2019,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
       refreshLinkedTaskOptions();
       els.mobileTaskDate.value=toISO(new Date());
       els.mobileTaskEndDate.value=els.mobileTaskDate.value;
+      setDateMode('single',{groupName:'mobileTaskDateMode',startInput:els.mobileTaskDate,endInput:els.mobileTaskEndDate,endWrap:els.mobileTaskEndDateWrap,startLabel:els.mobileTaskDateFieldLabel});
       if(fixedArea) els.mobileTaskArea.value=fixedArea;
       setPurchaseOrderRows(els.mobilePurchaseOrdersRows,[{}]);
       els.mobileTaskRecurrence.value='none';
@@ -1945,6 +2040,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
   if(els.mobileTaskDate){
     els.mobileTaskDate.value=toISO(new Date());
     els.mobileTaskEndDate.value=els.mobileTaskDate.value;
+    setDateMode('single',{groupName:'mobileTaskDateMode',startInput:els.mobileTaskDate,endInput:els.mobileTaskEndDate,endWrap:els.mobileTaskEndDateWrap,startLabel:els.mobileTaskDateFieldLabel});
     setPurchaseOrderRows(els.mobilePurchaseOrdersRows,[{}]);
     updateRecurrenceControl(els.mobileTaskRecurrence,els.mobileTaskRecurrenceUntilWrap,els.mobileTaskRecurrenceUntil,els.mobileTaskRecurrenceHelp,els.mobileTaskDate.value);
   }
