@@ -13,3 +13,6 @@ Aplicación web de gestión para la Secretaría de Obras y Servicios Públicos.
 - Roles: admin, manager y loader
 
 El archivo `supabase/002_v8_costos_historial_vinculos.sql` contiene la migración correspondiente a esta versión.
+
+
+Despliegue automático: GitHub → Vercel ✅
