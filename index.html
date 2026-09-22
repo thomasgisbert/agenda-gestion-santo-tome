@@ -417,15 +417,15 @@ button:disabled{opacity:.62;cursor:not-allowed}
             <input id="monthPicker" class="hidden-native-picker" type="month" />
           </div>
           <div class="view-switch" role="group" aria-label="Cambiar vista">
-            <button id="costsViewBtn" class="view-button active" data-view="costs" type="button">Costos</button>
-            <button id="calendarViewBtn" class="view-button" data-view="calendar" type="button">Calendario</button>
+            <button id="costsViewBtn" class="view-button" data-view="costs" type="button">Costos</button>
+            <button id="calendarViewBtn" class="view-button active" data-view="calendar" type="button">Calendario</button>
             <button id="areaViewBtn" class="view-button" data-view="areas" type="button">Por área</button>
           </div>
         </div>
 
         <div id="activeFilterBar" class="active-filter-bar hidden"></div>
 
-        <section id="costsView" class="view-panel">
+        <section id="costsView" class="view-panel hidden">
           <div class="cost-dashboard">
             <div class="cost-dashboard-head">
               <div>
@@ -449,7 +449,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
           </div>
         </section>
 
-        <section id="calendarView" class="view-panel hidden">
+        <section id="calendarView" class="view-panel">
           <div class="calendar-shell">
             <div class="weekday-row">
               <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
@@ -673,7 +673,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
 
   let currentMonth = startOfMonth(new Date());
   let activeAreaIds = new Set();
-  let currentView = 'costs';
+  let currentView = 'calendar';
   let tasks = [];
   let currentDetailTaskId = null;
   let currentUser = null;
@@ -772,7 +772,7 @@ button:disabled{opacity:.62;cursor:not-allowed}
     els.appShell.classList.remove('hidden');
     els.sessionEmail.textContent = currentUser?.email || currentProfile?.email || 'Usuario';
     applyAccessMode();
-    if(currentProfile?.role!=='loader') setView('costs');
+    if(currentProfile?.role!=='loader') setView('calendar');
     if(els.mobileTaskDate && !els.mobileTaskDate.value) els.mobileTaskDate.value = toISO(new Date());
     renderAll();
   }
